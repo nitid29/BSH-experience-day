@@ -272,3 +272,10 @@ body.is-admin .timetable-panel{display:none;}
 .ws-card.social{border-color:#F5C9B8;background:var(--orange-soft);width:100%;}
 .ws-card.social.booked{background:var(--bg-2);border-color:var(--line);}
 .tt-note{margin:6px 14px 0;font-size:.72rem;color:var(--ink-2);}
+.success .tick.wait{background:var(--yellow-bg);color:#8A6D00;font-weight:700;}
+.alert-wait{text-align:left;background:var(--yellow-bg);border:2px solid #E0A800;border-radius:8px;padding:14px 16px;margin:14px 0 6px;font-size:.86rem;color:#262626;line-height:1.5;}
+.alert-wait ul{margin:8px 0 10px 18px;}
+.alert-wait li{margin:3px 0;}
+.bookings .b-row .btn-small+.btn-small{margin-left:-4px;}
+table.tt td.wl{background:var(--yellow-bg);font-weight:600;color:#8A6D00;}
+.tt-legend .dot.wl{background:var(--yellow-bg);border-color:#F0D97A;}

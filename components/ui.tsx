@@ -160,7 +160,7 @@ export function Timetable({
 }: {
   config: EventConfig;
   selectedTopics: string[];
-  booked: { topic: string; timeSlot: string }[];
+  booked: { topic: string; timeSlot: string; status?: "confirmed" | "waitlist" }[];
 }) {
   const w = config.workshops;
   const cols = Math.max(...w.grid.map((r) => r.length), 0);
@@ -172,11 +172,19 @@ export function Timetable({
         Selected topics
       </span>,
     );
-  if (booked.some((r) => r.topic !== config.plenary.topic))
+  const inGrid = booked.filter((r) => w.times.includes(r.timeSlot));
+  if (inGrid.some((r) => r.status !== "waitlist"))
     legend.push(
       <span key="bk">
         <span className="dot bk" />
         Your bookings
+      </span>,
+    );
+  if (inGrid.some((r) => r.status === "waitlist"))
+    legend.push(
+      <span key="wl">
+        <span className="dot wl" />
+        Waitlist (no seat yet)
       </span>,
     );
   return (
@@ -222,8 +230,8 @@ export function Timetable({
               <tr key={ri}>
                 <td className="time">{w.times[ri]}</td>
                 {row.map((topic, ci) => {
-                  const isBooked = booked.some((r) => r.topic === topic && r.timeSlot === w.times[ri]);
-                  const cls = isBooked ? "bk" : selectedTopics.includes(topic) ? "hl" : undefined;
+                  const mine = booked.find((r) => r.topic === topic && r.timeSlot === w.times[ri]);
+                  const cls = mine ? (mine.status === "waitlist" ? "wl" : "bk") : selectedTopics.includes(topic) ? "hl" : undefined;
                   return (
                     <td key={ci} className={cls}>
                       {topicLabel(config, topic)}

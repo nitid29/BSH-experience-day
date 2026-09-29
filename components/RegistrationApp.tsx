@@ -28,6 +28,9 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
   const [submitError, setSubmitError] = useState<React.ReactNode>(null);
   const [busy, setBusy] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<MyBooking | null>(null);
+  const [swapTarget, setSwapTarget] = useState<MyBooking | null>(null);
+  // Sessions that still showed free seats when the person clicked "Confirm" (to spot "filled up meanwhile").
+  const [predictedOpen, setPredictedOpen] = useState<string[]>([]);
   const [cancelErr, setCancelErr] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const honeypot = useRef<HTMLInputElement>(null);
@@ -210,6 +213,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     setBusy(true);
     setSubmitError(null);
     const ids = selTopics.map((t) => selSlots[t]).filter(Boolean);
+    setPredictedOpen(ids.filter((id) => sess[id]?.state === "open"));
     let res: { status: number; data: BookResponse };
     try {
       res = await api<BookResponse>("/api/book", { name, email, sessionIds: ids, website: honeypot.current?.value ?? "" });
@@ -310,6 +314,38 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         Your {label(t.topic)} booking at {t.timeSlot} was cancelled.
       </>,
     );
+  };
+
+  /* ---------- leave a waitlist and choose another time ---------- */
+
+  /** Other sessions of the same topic that still take bookings and don't clash with the person's other bookings. */
+  const alternativesFor = (b: MyBooking) =>
+    Object.values(sess).filter(
+      (s) =>
+        s.topic === b.topic &&
+        s.id !== b.sessionId &&
+        s.state !== "full" &&
+        !mine.some((r) => r.id !== b.id && r.timeSlot === s.timeSlot),
+    );
+
+  const doSwap = async () => {
+    if (!swapTarget) return;
+    const t = swapTarget;
+    setBusy(true);
+    const { status, data } = await api("/api/cancel", { email, bookingId: t.id }).catch(() => ({ status: 0, data: null }));
+    setBusy(false);
+    if ((status !== 200 || !data?.ok) && data?.error !== "not_found") {
+      setCancelErr("Couldn't update your booking right now. Please try again.");
+      return;
+    }
+    setSwapTarget(null);
+    await refreshMine();
+    await refreshAvail();
+    setSelTopics([t.topic]);
+    setSelSlots({});
+    setJustFilled([]);
+    goStep(3);
+    show(<>You left the waitlist for {label(t.topic)} at {t.timeSlot}. Pick another time below.</>);
   };
 
   /* ---------- admin entry ---------- */
@@ -464,9 +500,13 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         <div className="panel">
           {heading(mine.length ? `Welcome back, ${firstName(name)}` : "Your registration")}
           <p className="lede">
-            {mine.length
-              ? "You're already registered for the sessions below. Add more sessions or cancel the ones you no longer need."
-              : "Choose the sessions you'd like to attend."}
+            {!mine.length
+              ? "Choose the sessions you'd like to attend."
+              : mine.every((r) => r.status === "waitlist")
+                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. Choose another time, add more sessions, or keep your waitlist place."
+                : mine.some((r) => r.status === "waitlist")
+                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Add more sessions, choose another time for a waitlisted one, or cancel what you no longer need."
+                  : "You're already registered for the sessions below. Add more sessions or cancel the ones you no longer need."}
           </p>
           {errorBox}
           {anyWait && (
@@ -485,6 +525,18 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                       {label(r.topic)} <StatusBadge status={r.status} position={r.waitlistPosition} />
                     </span>
                     <span className="b-time">{r.timeSlot}</span>
+                    {r.status === "waitlist" && (
+                      <button
+                        className="btn-small"
+                        aria-label={`Choose another time for ${label(r.topic)}`}
+                        onClick={() => {
+                          setCancelErr("");
+                          setSwapTarget(r);
+                        }}
+                      >
+                        Choose another time
+                      </button>
+                    )}
                     <button
                       className="btn-small danger"
                       aria-label={`Cancel ${label(r.topic)} at ${r.timeSlot}`}
@@ -897,26 +949,58 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       </>
     );
   } else {
-    const anyNewWait = mine.some((r) => lastNewIds.includes(r.id) && r.status === "waitlist");
+    const newOnes = mine.filter((r) => lastNewIds.includes(r.id));
+    const newWait = newOnes.filter((r) => r.status === "waitlist");
+    const newConfirmed = newOnes.length - newWait.length;
+    const reminder = !G || bookedByTopic[G] ? config.evening.successReminder : config.evening.successReminderNotBooked;
     body = (
       <div className="success">
-        <div className="tick" aria-hidden>
-          ✓
-        </div>
-        {heading(`You're registered, ${firstName(name)}`)}
-        <p>
-          See you on {config.event.shortDateLabel}.{" "}
-          {!G || bookedByTopic[G] ? config.evening.successReminder : config.evening.successReminderNotBooked}
-        </p>
+        {newWait.length ? (
+          <>
+            <div className="tick wait" aria-hidden>
+              !
+            </div>
+            {heading(
+              newConfirmed
+                ? `Registered for ${newConfirmed} of ${newOnes.length} sessions, ${firstName(name)}`
+                : "You're on the waitlist — not registered",
+            )}
+            <div className="alert-wait" role="alert">
+              <strong>
+                {newWait.length === 1 ? "This session has no seat for you:" : "These sessions have no seat for you:"}
+              </strong>
+              <ul>
+                {newWait.map((r) => (
+                  <li key={r.id}>
+                    <strong>
+                      {label(r.topic)} · {r.timeSlot}
+                    </strong>{" "}
+                    — not registered, you&apos;re <strong>#{r.waitlistPosition ?? "?"} on the waitlist</strong>
+                    {predictedOpen.includes(r.sessionId) && <> (it filled up while you were registering)</>}
+                  </li>
+                ))}
+              </ul>
+              Your registration for {newWait.length === 1 ? "this session" : "these sessions"} did <strong>not</strong> go through — you were put on
+              the waitlist instead. You only get a seat if someone cancels; you&apos;ll then move up automatically and the organising team will email
+              you. If you&apos;d rather attend at another time, adjust your sessions now.
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="tick" aria-hidden>
+              ✓
+            </div>
+            {heading(`You're registered, ${firstName(name)}`)}
+          </>
+        )}
+        {newConfirmed > 0 && (
+          <p>
+            See you on {config.event.shortDateLabel}. {reminder}
+          </p>
+        )}
         <p className="email-line">
           Registered with <strong>{email}</strong>
         </p>
-        {anyNewWait && (
-          <p style={{ color: "#8A6D00" }}>
-            A session was full, so you&apos;re on its waitlist. You&apos;ll move up automatically if a seat frees up, and the organising team will
-            email you.
-          </p>
-        )}
         <div className="list-label" style={{ textAlign: "left", marginTop: 14 }}>
           All your bookings
         </div>
@@ -933,7 +1017,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         </div>
         <div className="btn-row" style={{ justifyContent: "center" }}>
           <button className="btn-primary" onClick={() => goStep(1.5)}>
-            Manage my bookings
+            {newWait.length ? "Adjust my sessions" : "Manage my bookings"}
           </button>
         </div>
       </div>
@@ -957,7 +1041,10 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         <Modal onClose={() => setCancelTarget(null)} label="Cancel this booking?">
           <h2>Cancel this booking?</h2>
           <p>
-            {label(cancelTarget.topic)} at {cancelTarget.timeSlot}. Your seat will go to the next person on the waitlist.
+            {label(cancelTarget.topic)} at {cancelTarget.timeSlot}.{" "}
+            {cancelTarget.status === "waitlist"
+              ? "You'll leave the waitlist for this session."
+              : "Your seat will go to the next person on the waitlist."}
           </p>
           <div className="err" role="alert">
             {cancelErr}
@@ -969,6 +1056,36 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             <button className="btn-danger" onClick={doCancel} disabled={busy}>
               Cancel booking
             </button>
+          </div>
+        </Modal>
+      )}
+      {swapTarget && (
+        <Modal onClose={() => setSwapTarget(null)} label="Choose another time?">
+          <h2>Choose another time?</h2>
+          {alternativesFor(swapTarget).length ? (
+            <p>
+              You&apos;ll leave the waitlist for {label(swapTarget.topic)} at {swapTarget.timeSlot} (you&apos;re #{swapTarget.waitlistPosition ?? "?"}).
+              Right now {alternativesFor(swapTarget).length} other time{alternativesFor(swapTarget).length === 1 ? "" : "s"} can still be booked —
+              you&apos;ll pick one on the next screen.
+            </p>
+          ) : (
+            <p>
+              No other time for {label(swapTarget.topic)} can be booked right now (full or clashing with your other sessions). Keep your waitlist
+              place — you&apos;ll move up automatically if someone cancels.
+            </p>
+          )}
+          <div className="err" role="alert">
+            {cancelErr}
+          </div>
+          <div className="btn-row">
+            <button className="btn-secondary" onClick={() => setSwapTarget(null)}>
+              Keep my waitlist place
+            </button>
+            {alternativesFor(swapTarget).length > 0 && (
+              <button className="btn-primary" onClick={doSwap} disabled={busy}>
+                Leave waitlist and choose
+              </button>
+            )}
           </div>
         </Modal>
       )}
