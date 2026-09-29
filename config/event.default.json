@@ -148,8 +148,8 @@
     "allowedEmailDomains": [
       "bshg.com"
     ],
-    "emailPlaceholder": "for example max.mustermann@bshg.com",
-    "namePlaceholder": "for example Max Mustermann",
+    "emailPlaceholder": "for example john.doe@bshg.com",
+    "namePlaceholder": "for example John Doe",
     "privacyNotice": "Your name and email are stored only to organise REU Experience Day and will be deleted after the event."
   },
   "capacityOverrides": {}
