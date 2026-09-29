@@ -176,7 +176,6 @@ export function Timetable({
         Your bookings
       </span>,
     );
-  const plenaryTimes = config.plenary.sessions.map((s) => s.time.replace("-", "–")).join(" & ");
   return (
     <aside className="timetable-panel" aria-label="Full workshop timetable">
       <div className="tt-head">
@@ -185,12 +184,18 @@ export function Timetable({
           Six parallel rooms rotate through all topics. {w.confirmedCap} seats each — a waitlist opens once a session is full.
         </p>
       </div>
-      <div className="tt-info plenary">
-        <strong>
-          {plenaryTimes} · {config.plenary.title}
-        </strong>
-        {config.plenary.timetableNote}
-      </div>
+      {/* The plenary sessions run one after the other (not in parallel), so each gets its own entry. */}
+      {config.plenary.sessions.map((ps) => (
+        <div className="tt-info plenary" key={ps.time}>
+          <strong>
+            {ps.time.replace("-", "–")} · {ps.label || config.plenary.title}
+          </strong>
+          {config.plenary.description}
+        </div>
+      ))}
+      {config.plenary.sessions.length > 1 && (
+        <p className="tt-note">Both {config.plenary.title} sessions have the same content — register for one.</p>
+      )}
       <div className="tt-table-wrap">
         <table className="tt">
           <colgroup>

@@ -271,3 +271,4 @@ body.is-admin .timetable-panel{display:none;}
 .config-error li{margin-left:18px;}
 .ws-card.social{border-color:#F5C9B8;background:var(--orange-soft);width:100%;}
 .ws-card.social.booked{background:var(--bg-2);border-color:var(--line);}
+.tt-note{margin:6px 14px 0;font-size:.72rem;color:var(--ink-2);}
