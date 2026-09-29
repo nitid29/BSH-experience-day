@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 48" width="48" height="36" role="img" aria-label="REU">
+  <!-- Placeholder for the REU three-wave mark. Replace with the official asset (keep the file name). -->
+  <g fill="none" stroke="#000" stroke-width="4.5" stroke-linecap="round">
+    <path d="M4 12c6.7-6 13.3-6 20 0s13.3 6 20 0 10-4.5 16-3"/>
+    <path d="M4 24c6.7-6 13.3-6 20 0s13.3 6 20 0 10-4.5 16-3"/>
+    <path d="M4 36c6.7-6 13.3-6 20 0s13.3 6 20 0 10-4.5 16-3"/>
+  </g>
+</svg>
