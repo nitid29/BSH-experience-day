@@ -501,10 +501,10 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             {!mine.length
               ? "Choose the sessions you'd like to attend."
               : mine.every((r) => r.status === "waitlist")
-                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. Use “Change my sessions” to pick another time or add or remove sessions, or keep your waitlist place."
+                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. Use “Manage topics and bookings” to pick another time or add or remove sessions, or keep your waitlist place."
                 : anyWait
-                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Use “Change my sessions” to adjust — nothing changes until you confirm."
-                  : "You're registered for the sessions below. Use “Change my sessions” to adjust, or cancel what you no longer need."}
+                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Use “Manage topics and bookings” to adjust — nothing changes until you confirm."
+                  : "You're registered for the sessions below. Use “Manage topics and bookings” to adjust, or cancel what you no longer need."}
           </p>
           {errorBox}
           {anyWait && (
@@ -551,7 +551,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             </button>
             {mine.length ? (
               <button className="btn-primary" onClick={() => void startChange()}>
-                Change my sessions
+                Manage topics and bookings
               </button>
             ) : (
               <button className="btn-primary" onClick={() => goStep(2)}>
