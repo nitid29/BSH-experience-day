@@ -942,7 +942,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
 
   return (
     <>
-      <Header config={config} participants={availability?.participants ?? null} isAdminView={false} onAdmin={openAdmin} />
+      <Header config={config} isAdminView={false} onAdmin={openAdmin} />
       {!live && (
         <div className="storage-banner" role="status">
           <span className="live-dot stale" />

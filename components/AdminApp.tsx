@@ -105,7 +105,7 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
   if (authed === false) {
     return (
       <>
-        <Header config={config} participants={availability?.participants ?? null} isAdminView onBack={() => router.push("/")} />
+        <Header config={config} participants={data?.availability.participants ?? null} isAdminView onBack={() => router.push("/")} />
         <div className="shell">
           <main id="mainCol" className="login-page" />
         </div>
@@ -137,7 +137,7 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
         !q || r.name.toLowerCase().includes(q) || r.email.includes(q) || label(r.topic).toLowerCase().includes(q) || r.timeSlot.includes(q),
     )
     .sort(sorters[sort]);
-  const people = availability?.participants ?? new Set(regs.map((r) => r.email)).size;
+  const people = data?.availability.participants ?? new Set(regs.map((r) => r.email)).size;
   const th = (k: SortKey, text: string) => (
     <th className="sortable" aria-sort={sort === k ? "ascending" : undefined}>
       <button className="link-btn" style={{ color: "inherit", textDecoration: "none" }} onClick={() => setSort(k)}>
@@ -342,7 +342,7 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
 
   return (
     <>
-      <Header config={config} participants={availability?.participants ?? null} isAdminView onBack={() => router.push("/")} />
+      <Header config={config} participants={data?.availability.participants ?? null} isAdminView onBack={() => router.push("/")} />
       <div className="shell" style={{ gridTemplateColumns: "1fr" }}>
         <main id="mainCol">
           <div className="admin panel">

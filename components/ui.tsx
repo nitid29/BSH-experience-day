@@ -15,7 +15,8 @@ export function Header({
   onBack,
 }: {
   config: EventConfig;
-  participants: number | null;
+  /** Only shown to organisers (admin view). */
+  participants?: number | null;
   isAdminView: boolean;
   onAdmin?: () => void;
   onBack?: () => void;
@@ -35,9 +36,11 @@ export function Header({
         </div>
         <div className="header-spacer" />
         <div className="header-right">
-          <span className="reg-count" aria-live="polite">
-            {participants === null ? "…" : `${participants} participant${participants === 1 ? "" : "s"}`}
-          </span>
+          {isAdminView && participants !== undefined && (
+            <span className="reg-count" aria-live="polite">
+              {participants === null ? "…" : `${participants} participant${participants === 1 ? "" : "s"}`}
+            </span>
+          )}
           {isAdminView ? (
             <button className="btn-ghost" onClick={onBack}>
               ← Registration

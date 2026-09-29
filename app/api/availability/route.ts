@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 /** Live seat counts for every session (counts only — never names or emails). */
 export async function GET() {
   try {
-    return json(await rpc<Availability>("get_availability"));
+    // The participant total is for organisers only (shown in the admin dashboard).
+    const { participants: _hidden, ...pub } = await rpc<Availability>("get_availability");
+    void _hidden;
+    return json(pub);
   } catch (e) {
     return serverError(e);
   }

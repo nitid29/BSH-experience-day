@@ -18,7 +18,8 @@ export type SessionAvail = {
   state: SessionState;
 };
 
-export type Availability = { version: number; participants: number; sessions: SessionAvail[] };
+/** `participants` is only present in the admin data, never in the public feed. */
+export type Availability = { version: number; participants?: number; sessions: SessionAvail[] };
 
 export type MyBooking = {
   id: string;
