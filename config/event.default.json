@@ -31,36 +31,117 @@
     "confirmedCap": 50,
     "waitlistCap": 10,
     "sessions": [
-      { "time": "09:30-10:30", "label": "STX Strategy Update · Session A" },
-      { "time": "11:00-12:00", "label": "STX Strategy Update · Session B" }
+      {
+        "time": "09:30-10:30",
+        "label": "STX Strategy Update · Session A"
+      },
+      {
+        "time": "11:00-12:00",
+        "label": "STX Strategy Update · Session B"
+      }
     ]
   },
   "workshops": {
     "confirmedCap": 15,
     "waitlistCap": 10,
     "topics": [
-      { "key": "Surface/Vent", "desc": "Cooktops and ventilation: portfolio direction, connected features and category roadmap." },
-      { "key": "Dish Care", "desc": "Dishwashers: efficiency programs, Zeolith drying and the next platform generation." },
-      { "key": "Laundry Care", "desc": "Washers and dryers: i-DOS dosing, sustainability targets and lineup strategy." },
-      { "key": "Ovens", "desc": "Built-in ovens: sensor cooking, steam functions and premium segment positioning." },
-      { "key": "Cooling", "desc": "Refrigeration: VitaFresh, energy labels and the connected cooling roadmap." },
-      { "key": "CI", "desc": "Consumer Insights and use cases: latest research on buying behavior and category perception." }
+      {
+        "key": "Surface/Vent",
+        "desc": "Cooktops and ventilation: portfolio direction, connected features and category roadmap."
+      },
+      {
+        "key": "Dish Care",
+        "desc": "Dishwashers: efficiency programs, Zeolith drying and the next platform generation."
+      },
+      {
+        "key": "Laundry Care",
+        "desc": "Washers and dryers: i-DOS dosing, sustainability targets and lineup strategy."
+      },
+      {
+        "key": "Ovens",
+        "desc": "Built-in ovens: sensor cooking, steam functions and premium segment positioning."
+      },
+      {
+        "key": "Cooling",
+        "desc": "Refrigeration: VitaFresh, energy labels and the connected cooling roadmap."
+      },
+      {
+        "key": "CI",
+        "desc": "Consumer Insights and use cases: latest research on buying behavior and category perception."
+      }
     ],
-    "times": ["13:00-13:30", "13:45-14:15", "14:30-15:00", "15:30-16:00", "16:15-16:45", "17:00-17:30"],
+    "times": [
+      "13:00-13:30",
+      "13:45-14:15",
+      "14:30-15:00",
+      "15:30-16:00",
+      "16:15-16:45",
+      "17:00-17:30"
+    ],
     "grid": [
-      ["Surface/Vent", "Dish Care", "Laundry Care", "Ovens", "Cooling", "CI"],
-      ["CI", "Surface/Vent", "Dish Care", "Laundry Care", "Ovens", "Cooling"],
-      ["Cooling", "CI", "Surface/Vent", "Dish Care", "Laundry Care", "Ovens"],
-      ["Ovens", "Cooling", "CI", "Surface/Vent", "Dish Care", "Laundry Care"],
-      ["Laundry Care", "Ovens", "Cooling", "CI", "Surface/Vent", "Dish Care"],
-      ["Dish Care", "Laundry Care", "Ovens", "Cooling", "CI", "Surface/Vent"]
+      [
+        "Surface/Vent",
+        "Dish Care",
+        "Laundry Care",
+        "Ovens",
+        "Cooling",
+        "CI"
+      ],
+      [
+        "CI",
+        "Surface/Vent",
+        "Dish Care",
+        "Laundry Care",
+        "Ovens",
+        "Cooling"
+      ],
+      [
+        "Cooling",
+        "CI",
+        "Surface/Vent",
+        "Dish Care",
+        "Laundry Care",
+        "Ovens"
+      ],
+      [
+        "Ovens",
+        "Cooling",
+        "CI",
+        "Surface/Vent",
+        "Dish Care",
+        "Laundry Care"
+      ],
+      [
+        "Laundry Care",
+        "Ovens",
+        "Cooling",
+        "CI",
+        "Surface/Vent",
+        "Dish Care"
+      ],
+      [
+        "Dish Care",
+        "Laundry Care",
+        "Ovens",
+        "Cooling",
+        "CI",
+        "Surface/Vent"
+      ]
     ]
   },
   "evening": {
     "time": "17:30-20:00",
     "title": "Gathering with Apéro & Pizza",
-    "description": "Cross-departmental get-together. No registration needed.",
-    "successReminder": "Don't forget the Apéro & Pizza gathering from 17:30!"
+    "description": "Cross-departmental get-together. Registration required.",
+    "successReminder": "Don't forget the Apéro & Pizza gathering from 17:30!",
+    "successReminderNotBooked": "The Apéro & Pizza gathering from 17:30 needs a registration too — add it via Manage my bookings.",
+    "registration": {
+      "enabled": true,
+      "topic": "Gathering",
+      "cardDescription": "Cross-departmental get-together with Apéro & Pizza to close the day.",
+      "confirmedCap": 200,
+      "waitlistCap": 0
+    }
   },
   "registration": {
     "allowedEmailDomains": [],

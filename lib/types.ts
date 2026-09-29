@@ -3,7 +3,7 @@ export type SessionState = "open" | "waitlist" | "full";
 export type SessionAvail = {
   id: string;
   topic: string;
-  kind: "plenary" | "workshop";
+  kind: "plenary" | "workshop" | "social";
   timeSlot: string;
   label: string | null;
   room: number | null;

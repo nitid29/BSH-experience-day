@@ -44,9 +44,11 @@ before(async () => {
   assert.equal(res.ok, true);
 });
 
-test("config creates 2 plenary + 36 workshop sessions", async () => {
+test("config creates 2 plenary + 36 workshop + 1 gathering sessions", async () => {
   const a = await call(`select get_availability() as result`);
-  assert.equal(a.sessions.length, 38);
+  assert.equal(a.sessions.length, 39);
+  const g = a.sessions.find((s: any) => s.id === "gathering_17302000");
+  assert.deepEqual([g.kind, g.confirmedCap, g.waitlistCap, g.label], ["social", 200, 0, "Gathering with Apéro & Pizza"]);
   const stx = a.sessions.find((s: any) => s.id === "stx_09301030");
   assert.equal(stx.confirmedCap, 50);
   const c = a.sessions.find((s: any) => s.id === "cooling_13001330");
@@ -213,4 +215,23 @@ test("allowed email domains are enforced by the database", async () => {
 test("rate limiter", async () => {
   const hit = () => call<boolean>(`select rate_limit_hit(p_key=>'t',p_max=>3,p_window_seconds=>60) as result`);
   assert.deepEqual([await hit(), await hit(), await hit(), await hit()], [true, true, true, false]);
+});
+
+test("gathering: no waitlist, closes when full, can be combined with the 17:00 workshop", async () => {
+  const cfg = structuredClone(DEFAULT_CONFIG);
+  cfg.capacityOverrides = { gathering_17302000: { confirmedCap: 2 } };
+  await call(`select admin_apply_config(p_config => $1::jsonb, p_sessions => $2::jsonb) as result`, [JSON.stringify(cfg), JSON.stringify(buildSessions(cfg))]);
+  const r = await book("Evening One", "eve1@bshg.com", ["cooling_17001730", "gathering_17302000"]);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.outcomes.map((o: any) => o.result), ["confirmed", "confirmed"]);
+  assert.equal((await book("Evening Two", "eve2@bshg.com", ["gathering_17302000"])).ok, true);
+  const a = await avail("gathering_17302000");
+  assert.deepEqual([a.confirmedCount, a.waitlistCount, a.state], [2, 0, "full"]);
+  const full = await book("Evening Three", "eve3@bshg.com", ["gathering_17302000"]);
+  assert.equal(full.ok, false);
+  assert.equal(full.outcomes[0].reason, "full");
+  // cancelling frees the place again
+  const id = await idOf("eve2@bshg.com", "gathering_17302000");
+  assert.equal((await call(`select cancel_booking(p_email => $1, p_booking_id => $2::uuid) as result`, ["eve2@bshg.com", id])).ok, true);
+  assert.equal((await book("Evening Three", "eve3@bshg.com", ["gathering_17302000"])).ok, true);
 });

@@ -37,7 +37,21 @@ export type EventConfig = {
     times: string[];
     grid: string[][];
   };
-  evening: { time: string; title: string; description: string; successReminder: string };
+  evening: {
+    time: string;
+    title: string;
+    description: string;
+    successReminder: string;
+    successReminderNotBooked: string;
+    /** When enabled, the gathering is a bookable session (no waitlist by default). */
+    registration?: {
+      enabled: boolean;
+      topic: string;
+      cardDescription: string;
+      confirmedCap: number;
+      waitlistCap: number;
+    };
+  };
   registration: {
     allowedEmailDomains: string[];
     emailPlaceholder: string;
@@ -50,7 +64,7 @@ export type EventConfig = {
 export type SessionDef = {
   id: string;
   topic: string;
-  kind: "plenary" | "workshop";
+  kind: "plenary" | "workshop" | "social";
   timeSlot: string;
   label: string | null;
   room: number | null;
@@ -105,7 +119,26 @@ export function buildSessions(cfg: EventConfig): SessionDef[] {
       });
     });
   }
+  const reg = cfg.evening.registration;
+  if (reg?.enabled) {
+    const id = sessionId(reg.topic, cfg.evening.time);
+    out.push({
+      id,
+      topic: reg.topic,
+      kind: "social",
+      timeSlot: cfg.evening.time,
+      label: cfg.evening.title,
+      room: null,
+      sortOrder: order++,
+      ...cap(id, reg.confirmedCap, reg.waitlistCap),
+    });
+  }
   return out;
+}
+
+/** The bookable evening gathering's topic key, or null when it needs no registration. */
+export function eveningTopic(cfg: EventConfig): string | null {
+  return cfg.evening.registration?.enabled ? cfg.evening.registration.topic : null;
 }
 
 const isStr = (v: unknown) => typeof v === "string" && v.trim().length > 0;
@@ -150,7 +183,18 @@ export function validateConfig(raw: unknown): string[] {
   times?.forEach((t, i) => {
     if (!TIME_RE.test(t ?? "")) errs.push(`workshops.times[${i}] must look like 13:00-13:30.`);
   });
-  const allTimes = [...(times ?? []), ...(c.plenary?.sessions ?? []).map((s) => s.time)];
+  const reg = c.evening?.registration;
+  if (reg?.enabled) {
+    if (!isStr(reg.topic)) errs.push("evening.registration.topic is required.");
+    if (keys.has(reg.topic) || reg.topic === c.plenary?.topic) errs.push("evening.registration.topic must differ from all other topics.");
+    if (!isCap(reg.confirmedCap) || !isCap(reg.waitlistCap)) errs.push("evening registration capacities must be whole numbers ≥ 0.");
+    if (!TIME_RE.test(c.evening?.time ?? "")) errs.push("evening.time must look like 17:30-20:00.");
+  }
+  const allTimes = [
+    ...(times ?? []),
+    ...(c.plenary?.sessions ?? []).map((s) => s.time),
+    ...(reg?.enabled ? [c.evening.time] : []),
+  ];
   if (new Set(allTimes).size !== allTimes.length) errs.push("Every session time (plenary and workshop rows) must be unique.");
   if (!Array.isArray(c.workshops?.grid) || c.workshops.grid.length !== (times?.length ?? -1))
     errs.push("workshops.grid needs exactly one row per time.");
@@ -173,7 +217,9 @@ export function validateConfig(raw: unknown): string[] {
 }
 
 export function topicLabel(cfg: EventConfig, topic: string): string {
-  return topic === cfg.plenary.topic ? cfg.plenary.title : topic;
+  if (topic === cfg.plenary.topic) return cfg.plenary.title;
+  if (topic === eveningTopic(cfg)) return cfg.evening.title;
+  return topic;
 }
 
 export function emailDomainAllowed(cfg: EventConfig, email: string): boolean {

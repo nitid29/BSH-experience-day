@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { emailDomainAllowed, sessionId, topicLabel, type EventConfig } from "@/lib/config";
+import { emailDomainAllowed, eveningTopic, sessionId, topicLabel, type EventConfig } from "@/lib/config";
 import { api, firstName, indexSessions, normEmail, useAvailability, useToast, validEmail, type RealtimeInfo } from "@/lib/client";
 import type { BookOutcome, BookResponse, MyBooking } from "@/lib/types";
 import { AdminLoginModal, ErrorBox, Header, Modal, NoteBox, SeatPill, StatusBadge, Timetable, Toast } from "./ui";
@@ -35,7 +35,9 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
   const { toast, show } = useToast();
 
   const P = config.plenary.topic;
-  const allTopics = useMemo(() => [P, ...config.workshops.topics.map((t) => t.key)], [P, config.workshops.topics]);
+  const G = eveningTopic(config); // bookable evening gathering, if registration is enabled
+  const gSid = G ? sessionId(G, config.evening.time) : null;
+  const allTopics = [P, ...config.workshops.topics.map((t) => t.key), ...(G ? [G] : [])];
   const label = useCallback((t: string) => topicLabel(config, t), [config]);
 
   /* ---------- data ---------- */
@@ -551,7 +553,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
           <p className="lede">
             {returning
               ? "Topics you've already booked are marked. Select any additional sessions — the system blocks time clashes with your existing bookings."
-              : `Select one or more. You can attend the ${config.plenary.topic} plenary and multiple product workshops — the system blocks time clashes automatically.`}
+              : `Select one or more. You can attend the ${config.plenary.topic} plenary, multiple product workshops${G ? " and the evening gathering" : ""} — the system blocks time clashes automatically.`}
           </p>
           {errorBox}
           <div style={{ marginBottom: 8 }}>
@@ -615,6 +617,47 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
               );
             })}
           </div>
+          {G && gSid && (
+            <div style={{ marginTop: 12 }}>
+              {bookedByTopic[G] ? (
+                <div className="ws-card social booked">
+                  <h3>{config.evening.title}</h3>
+                  <p>{config.evening.registration?.cardDescription}</p>
+                  {bookedTag(bookedByTopic[G])}
+                </div>
+              ) : sess[gSid]?.state === "full" && !selTopics.includes(G) ? (
+                <div className="ws-card social booked">
+                  <h3>{config.evening.title}</h3>
+                  <p>{config.evening.registration?.cardDescription}</p>
+                  <span className="meta">Fully booked</span>
+                </div>
+              ) : (
+                <button
+                  className={`ws-card social ${selTopics.includes(G) ? "selected" : ""}`}
+                  aria-pressed={selTopics.includes(G)}
+                  aria-label={config.evening.title}
+                  aria-describedby="d-evening"
+                  onClick={() => {
+                    if (selTopics.includes(G)) return toggle(G);
+                    setSelTopics([...selTopics, G]);
+                    // Only one session, so pre-select it.
+                    if (sess[gSid]?.state !== "full") setSelSlots({ ...selSlots, [G]: gSid });
+                  }}
+                >
+                  <span className="check" aria-hidden>
+                    {selTopics.includes(G) ? "✓" : ""}
+                  </span>
+                  <h3>{config.evening.title}</h3>
+                  <p id="d-evening">
+                    {config.evening.registration?.cardDescription} {config.evening.time.replace("-", "–")}.
+                  </p>
+                  <span className="meta">
+                    {sess[gSid] ? `${sess[gSid].seatsLeft} of ${sess[gSid].confirmedCap} places left` : "Loading availability…"}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
           <div className="btn-row">
             <button className="btn-secondary" onClick={() => goStep(returning ? 1.5 : 1)}>
               Back
@@ -665,6 +708,35 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
           )}
           {orderedTopics.map((t) => {
             const chosen = selSlots[t];
+            if (t === G && gSid) {
+              const s = sess[gSid];
+              const sel = chosen === gSid;
+              const dis = !s || (s.state === "full" && !sel);
+              return (
+                <div className="slot-group" key={t} role="group" aria-labelledby={`g-${t}`}>
+                  <h3 id={`g-${t}`}>{config.evening.title}</h3>
+                  <div className="sub">One session for everyone. No waitlist — once all places are taken, registration closes.</div>
+                  <div className="slot-list">
+                    <button
+                      className={`slot-btn ${sel ? "selected" : ""}${justFilled.includes(gSid) ? " just-filled" : ""}`}
+                      disabled={dis}
+                      aria-pressed={sel}
+                      onClick={() => pick(t, gSid)}
+                    >
+                      {config.evening.time} <SeatPill s={s} justFilled={justFilled.includes(gSid)} />
+                    </button>
+                  </div>
+                  {s?.state === "full" && !sel && (
+                    <div className="sub" style={{ color: "var(--red)", marginTop: 8 }}>
+                      The gathering is fully booked.{" "}
+                      <button className="link-btn" onClick={() => dropTopic(t)}>
+                        Remove it from this registration
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (t === P) {
               return (
                 <div className="slot-group" key={t} role="group" aria-labelledby={`g-${t}`}>
@@ -833,7 +905,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         </div>
         {heading(`You're registered, ${firstName(name)}`)}
         <p>
-          See you on {config.event.shortDateLabel}. {config.evening.successReminder}
+          See you on {config.event.shortDateLabel}.{" "}
+          {!G || bookedByTopic[G] ? config.evening.successReminder : config.evening.successReminderNotBooked}
         </p>
         <p className="email-line">
           Registered with <strong>{email}</strong>

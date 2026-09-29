@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildSessions, topicLabel, validateConfig, type EventConfig } from "@/lib/config";
+import { buildSessions, eveningTopic, topicLabel, validateConfig, type EventConfig } from "@/lib/config";
 import { api, useAvailability, useToast, type RealtimeInfo } from "@/lib/client";
 import type { AdminBooking, Availability, AuditEntry, Promoted, SessionAvail } from "@/lib/types";
 import { AdminLoginModal, Header, Modal, SeatPill, StatusBadge, Toast } from "./ui";
@@ -314,7 +314,7 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
               return (
                 <tr key={s.id}>
                   <td>
-                    {s.kind === "plenary" ? s.label || s.topic : s.topic} · {s.timeSlot}
+                    {s.kind === "workshop" ? s.topic : s.label || s.topic} · {s.timeSlot}
                   </td>
                   <td>
                     {s.confirmedCount} / {s.confirmedCap}
@@ -453,7 +453,8 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
 
 function SessionOptions({ config, sess }: { config: EventConfig; sess: Record<string, SessionAvail> }) {
   const all = Object.values(sess).sort((a, b) => a.sortOrder - b.sortOrder);
-  const topics = [config.plenary.topic, ...config.workshops.topics.map((t) => t.key)];
+  const g = eveningTopic(config);
+  const topics = [config.plenary.topic, ...config.workshops.topics.map((t) => t.key), ...(g ? [g] : [])];
   return (
     <>
       {topics.map((t) => (
@@ -679,10 +680,9 @@ function SettingsPanel({
     const v = raw === "" ? undefined : Math.max(0, Math.floor(Number(raw)));
     const o = { ...(draft.capacityOverrides[id] ?? {}) };
     const def = defs.find((d) => d.id === id);
-    const typeDefault =
-      def?.kind === "plenary"
-        ? key === "confirmedCap" ? draft.plenary.confirmedCap : draft.plenary.waitlistCap
-        : key === "confirmedCap" ? draft.workshops.confirmedCap : draft.workshops.waitlistCap;
+    const typeCaps =
+      def?.kind === "plenary" ? draft.plenary : def?.kind === "social" && draft.evening.registration ? draft.evening.registration : draft.workshops;
+    const typeDefault = typeCaps[key];
     if (v === undefined || v === typeDefault || Number.isNaN(v)) delete o[key];
     else o[key] = v;
     const next = { ...draft.capacityOverrides };
@@ -837,6 +837,50 @@ function SettingsPanel({
                 onChange={(e) => setDraft({ ...draft, workshops: { ...draft.workshops, waitlistCap: Number(e.target.value) } })}
               />
             </label>
+            {draft.evening.registration && (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={draft.evening.registration.enabled}
+                    onChange={(e) =>
+                      setDraft({ ...draft, evening: { ...draft.evening, registration: { ...draft.evening.registration!, enabled: e.target.checked } } })
+                    }
+                  />{" "}
+                  Gathering needs registration
+                </label>
+                <label>
+                  Gathering places{" "}
+                  <input
+                    className="cap-input"
+                    type="number"
+                    min={0}
+                    value={draft.evening.registration.confirmedCap}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        evening: { ...draft.evening, registration: { ...draft.evening.registration!, confirmedCap: Number(e.target.value) } },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Gathering waitlist{" "}
+                  <input
+                    className="cap-input"
+                    type="number"
+                    min={0}
+                    value={draft.evening.registration.waitlistCap}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        evening: { ...draft.evening, registration: { ...draft.evening.registration!, waitlistCap: Number(e.target.value) } },
+                      })
+                    }
+                  />
+                </label>
+              </>
+            )}
           </div>
           <div className="section-h">Per-session capacity</div>
           <div className="tbl-wrap">
