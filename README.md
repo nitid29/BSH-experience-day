@@ -66,13 +66,13 @@ npm run lint
    node scripts/load-test.mjs https://<your-app>.vercel.app 200 ovens_17001730
    ```
    ```sql
-   delete from registrations where email like '%@loadtest.example';
+   delete from registrations where email like 'loadtest-%@bshg.com';
    ```
 
 ### Before launch
 
 - Confirm with BSH IT and the works council that an externally hosted tool may store employee names and emails. The privacy notice under the registration form can be edited in Settings → Advanced (`registration.privacyNotice`). Agree on a deletion date after the event.
-- Optionally restrict registration to corporate addresses: Admin → Event settings → *Allowed email domains* (for example `bshg.com`). The database enforces this as well.
+- Registration only accepts `@bshg.com` addresses (Admin → Event settings → *Allowed email domains*). The form, the server and the database all enforce this.
 - Supabase Pro includes daily backups. On the free tier, download **Backup JSON** from the admin dashboard regularly. **Import JSON** restores a backup (idempotent by id).
 
 ## Reusing it for another event

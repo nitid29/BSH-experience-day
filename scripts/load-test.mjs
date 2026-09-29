@@ -6,9 +6,8 @@
  *
  *   node scripts/load-test.mjs https://your-app.vercel.app 200 ovens_17001730
  *
- * Test bookings use the domain @loadtest.example. Remove them afterwards in the Supabase SQL editor:
- *   delete from registrations where email like '%@loadtest.example';
- * (If you restricted allowed email domains in Admin → Event settings, clear that list while testing.)
+ * Test bookings use addresses like loadtest-…@bshg.com. Remove them afterwards in the Supabase SQL editor:
+ *   delete from registrations where email like 'loadtest-%@bshg.com';
  */
 const [base = "http://localhost:3000", nArg = "200", session = "ovens_17001730"] = process.argv.slice(2);
 const n = Number(nArg);
@@ -29,7 +28,7 @@ const results = await Promise.all(
     fetch(`${base}/api/book`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: `Load Test ${i}`, email: `lt-${run}-${i}@loadtest.example`, sessionIds: [session] }),
+      body: JSON.stringify({ name: `Load Test ${i}`, email: `loadtest-${run}-${i}@bshg.com`, sessionIds: [session] }),
     })
       .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }))
       .catch((e) => ({ status: 0, body: { error: String(e) } })),
