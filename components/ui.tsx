@@ -242,7 +242,8 @@ export function Timetable({
       )}
       <div className="tt-info social" style={{ marginBottom: 14 }}>
         <strong>
-          {config.evening.time.replace("-", "–")} · {config.evening.title}
+          {config.evening.time.replace("-", "–")} · {config.evening.title}{" "}
+          <span aria-hidden>🍕</span>
         </strong>
         {config.evening.description}
       </div>
