@@ -11,7 +11,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  *   migration, persisted to .data/pglite. This lets the whole app run with `npm run dev` and no setup.
  */
 
-type ArgType = "text" | "text[]" | "uuid" | "boolean" | "int" | "jsonb";
+type ArgType = "text" | "text[]" | "uuid" | "uuid[]" | "boolean" | "int" | "jsonb";
 type Role = "anon" | "service";
 
 const RPC = {
@@ -20,6 +20,10 @@ const RPC = {
   get_my_bookings: { role: "anon", args: [["p_email", "text"]] },
   book_sessions: { role: "anon", args: [["p_name", "text"], ["p_email", "text"], ["p_session_ids", "text[]"]] },
   cancel_booking: { role: "anon", args: [["p_email", "text"], ["p_booking_id", "uuid"]] },
+  update_registration: {
+    role: "anon",
+    args: [["p_name", "text"], ["p_email", "text"], ["p_session_ids", "text[]"], ["p_based_on", "uuid[]"]],
+  },
   admin_list: { role: "service", args: [] },
   admin_add: { role: "service", args: [["p_name", "text"], ["p_email", "text"], ["p_session_id", "text"], ["p_forced", "boolean"]] },
   admin_move: { role: "service", args: [["p_id", "uuid"], ["p_session_id", "text"], ["p_forced", "boolean"]] },

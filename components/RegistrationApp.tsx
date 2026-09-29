@@ -28,7 +28,9 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
   const [submitError, setSubmitError] = useState<React.ReactNode>(null);
   const [busy, setBusy] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<MyBooking | null>(null);
-  const [swapTarget, setSwapTarget] = useState<MyBooking | null>(null);
+  // Booking ids the current selection was based on (sent with the change so a stale screen can't undo other changes).
+  const [baseIds, setBaseIds] = useState<string[]>([]);
+  const [removedLast, setRemovedLast] = useState<{ topic: string; timeSlot: string }[]>([]);
   // Sessions that still showed free seats when the person clicked "Confirm" (to spot "filled up meanwhile").
   const [predictedOpen, setPredictedOpen] = useState<string[]>([]);
   const [cancelErr, setCancelErr] = useState("");
@@ -78,23 +80,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
 
   const timeOf = useCallback((sid: string) => sess[sid]?.timeSlot ?? "", [sess]);
 
-  /** Same rules everywhere: one session per topic (so only one plenary), one session per time slot. */
-  const ruleCheck = useCallback(
-    (sid: string): string | null => {
-      const s = sess[sid];
-      if (!s) return "that session doesn't exist";
-      if (mine.some((r) => r.sessionId === sid)) return "already booked for this session";
-      const sameTopic = mine.find((r) => r.topic === s.topic);
-      if (sameTopic)
-        return s.kind === "plenary"
-          ? `already booked for the ${label(s.topic)} session at ${sameTopic.timeSlot} (only one of the two is allowed)`
-          : `already booked for ${label(s.topic)} at ${sameTopic.timeSlot}`;
-      const sameTime = mine.find((r) => r.timeSlot === s.timeSlot);
-      if (sameTime) return `already booked for ${label(sameTime.topic)} at ${s.timeSlot}`;
-      return null;
-    },
-    [sess, mine, label],
-  );
+  /** The booking the person currently holds in this session, if any. */
+  const currentIn = useCallback((sid: string) => mine.find((r) => r.sessionId === sid), [mine]);
 
   const goStep = useCallback((n: Step, keepError = false) => {
     setStep(n);
@@ -117,8 +104,9 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     for (const [topic, sid] of Object.entries(selSlots)) {
       const s = sess[sid];
       const clash = Object.entries(next).some(([k, id]) => k !== topic && sess[id]?.timeSlot === s?.timeSlot);
-      if (!s || s.state === "full" || ruleCheck(sid) || clash || !selTopics.includes(topic)) {
-        if (s?.state === "full") filled.push(sid);
+      const fullForMe = s?.state === "full" && !currentIn(sid); // a seat you already hold is never "full" for you
+      if (!s || fullForMe || clash || !selTopics.includes(topic)) {
+        if (fullForMe) filled.push(sid);
         delete next[topic];
         changed = true;
       }
@@ -127,9 +115,6 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (changed) setSelSlots(next);
     if (filled.length) setJustFilled((j) => [...new Set([...j, ...filled])]);
-    // drop topics that have since been booked (e.g. in another tab)
-    const keep = selTopics.filter((t) => !bookedByTopic[t]);
-    if (keep.length !== selTopics.length) setSelTopics(keep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availability, mine]);
 
@@ -181,6 +166,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       setEmail(emailNorm);
       setName(name.trim());
       setMine(d.bookings);
+      setBaseIds(d.bookings.map((b) => b.id));
       setJustFilled([]);
       await refreshAvail();
       goStep(d.bookings.length ? 1.5 : 2);
@@ -203,6 +189,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     setSelSlots({});
     setJustFilled([]);
     setLastNewIds([]);
+    setBaseIds([]);
+    setRemovedLast([]);
     setSubmitError(null);
     window.scrollTo({ top: 0 });
   };
@@ -213,10 +201,11 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     setBusy(true);
     setSubmitError(null);
     const ids = selTopics.map((t) => selSlots[t]).filter(Boolean);
-    setPredictedOpen(ids.filter((id) => sess[id]?.state === "open"));
+    setPredictedOpen(ids.filter((id) => !currentIn(id) && sess[id]?.state === "open"));
     let res: { status: number; data: BookResponse };
     try {
-      res = await api<BookResponse>("/api/book", { name, email, sessionIds: ids, website: honeypot.current?.value ?? "" });
+      // The complete wished-for registration: unchanged bookings are kept, deselected ones cancelled, new ones booked.
+      res = await api<BookResponse>("/api/book", { name, email, sessionIds: ids, basedOn: baseIds, website: honeypot.current?.value ?? "" });
     } catch {
       setBusy(false);
       setSubmitError(GENERIC_SAVE_ERROR);
@@ -224,8 +213,13 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     }
     const d = res.data;
     if (res.status === 200 && d?.ok) {
-      setLastNewIds(d.outcomes.map((o) => o.id!).filter(Boolean));
-      await refreshMine();
+      setLastNewIds(d.outcomes.filter((o) => !o.kept).map((o) => o.id!).filter(Boolean));
+      setRemovedLast(d.removed ?? []);
+      const fresh = await loadMine(email).catch(() => null);
+      if (fresh) {
+        setMine(fresh.bookings);
+        setBaseIds(fresh.bookings.map((b) => b.id));
+      }
       await refreshAvail();
       setSelTopics([]);
       setSelSlots({});
@@ -240,6 +234,13 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       setSubmitError(emailDomainMessage());
       return goStep(1, true);
     }
+    if (d && !d.ok && d.error === "stale") {
+      await startChange(undefined, true);
+      setSubmitError(
+        "Your bookings changed in the meantime (for example, an organiser updated them). Nothing was saved — your current bookings are selected again, please review your choices.",
+      );
+      return;
+    }
     if (d && !d.ok && (d.error === "rejected" || d.error === "conflict")) {
       const latest = await loadMine(email).catch(() => null);
       const bookings = latest?.bookings ?? mine;
@@ -247,21 +248,23 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       await refreshAvail();
       const problems: string[] = [];
       const nextSlots = { ...selSlots };
-      let nextTopics = [...selTopics];
+      const nextTopics = [...selTopics];
       for (const o of (d.outcomes ?? []) as BookOutcome[]) {
         if (o.result !== "rejected") continue;
         const t = o.topic ?? "";
         const when = o.timeSlot ?? timeOf(o.sessionId);
         if (o.reason?.startsWith("rule:")) {
           problems.push(`${label(t)} at ${when}: you're ${o.reason.slice(5)}.`);
-          if (bookings.some((b) => b.topic === t)) nextTopics = nextTopics.filter((x) => x !== t);
         } else if (o.reason === "full") {
           problems.push(`${label(t)} at ${when} filled up completely (including the waitlist) while you were registering. Please pick another time.`);
           setJustFilled((j) => [...new Set([...j, o.sessionId])]);
         } else {
           problems.push(`${label(t) || o.sessionId} is no longer available. Please pick another session.`);
         }
-        delete nextSlots[t];
+        // fall back to the time the person currently holds (if any), so they never lose it
+        const cur = bookings.find((b) => b.topic === t);
+        if (cur) nextSlots[t] = cur.sessionId;
+        else delete nextSlots[t];
       }
       if (!problems.length) problems.push("Please review your time slots.");
       setSelTopics(nextTopics);
@@ -316,37 +319,29 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     );
   };
 
-  /* ---------- leave a waitlist and choose another time ---------- */
+  /* ---------- change existing bookings (same screens as registering) ---------- */
 
-  /** Other sessions of the same topic that still take bookings and don't clash with the person's other bookings. */
-  const alternativesFor = (b: MyBooking) =>
-    Object.values(sess).filter(
-      (s) =>
-        s.topic === b.topic &&
-        s.id !== b.sessionId &&
-        s.state !== "full" &&
-        !mine.some((r) => r.id !== b.id && r.timeSlot === s.timeSlot),
-    );
-
-  const doSwap = async () => {
-    if (!swapTarget) return;
-    const t = swapTarget;
-    setBusy(true);
-    const { status, data } = await api("/api/cancel", { email, bookingId: t.id }).catch(() => ({ status: 0, data: null }));
-    setBusy(false);
-    if ((status !== 200 || !data?.ok) && data?.error !== "not_found") {
-      setCancelErr("Couldn't update your booking right now. Please try again.");
-      return;
+  /**
+   * Opens the normal Topics / Time slots screens with everything the person already booked pre-selected.
+   * Nothing changes until they confirm; then the whole registration is updated in one atomic step.
+   */
+  const startChange = async (focusTopic?: string, keepError = false) => {
+    let bookings = mine;
+    try {
+      bookings = (await loadMine(email)).bookings;
+      setMine(bookings);
+    } catch {
+      /* use what we have */
     }
-    setSwapTarget(null);
-    await refreshMine();
-    await refreshAvail();
-    setSelTopics([t.topic]);
-    setSelSlots({});
+    setBaseIds(bookings.map((b) => b.id));
+    setSelTopics(bookings.map((b) => b.topic));
+    setSelSlots(Object.fromEntries(bookings.map((b) => [b.topic, b.sessionId])));
     setJustFilled([]);
-    goStep(3);
-    show(<>You left the waitlist for {label(t.topic)} at {t.timeSlot}. Pick another time below.</>);
+    goStep(focusTopic ? 3 : 2, keepError);
+    if (focusTopic) setTimeout(() => document.getElementById(`g-${focusTopic}`)?.scrollIntoView({ block: "center" }), 150);
   };
+
+  const hasOtherTimes = (topic: string) => Object.values(sess).filter((s) => s.topic === topic).length > 1;
 
   /* ---------- admin entry ---------- */
 
@@ -401,6 +396,13 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     <h1 ref={headingRef} tabIndex={-1} style={{ outline: "none" }}>
       {text}
     </h1>
+  );
+
+  /** Seat pill for a slot the person already holds. */
+  const currentPill = (b: MyBooking) => (
+    <span className={`seat-pill ${b.status === "waitlist" ? "wait" : "green"}`}>
+      {b.status === "waitlist" ? `Your waitlist place #${b.waitlistPosition ?? "?"}` : "Your current seat"}
+    </span>
   );
 
   let body: React.ReactNode;
@@ -490,9 +492,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       </>
     );
   } else if (step === 1.5) {
-    const remaining = allTopics.filter((t) => !bookedByTopic[t]);
     const anyWait = mine.some((r) => r.status === "waitlist");
-    const allDone = remaining.length === 0;
     body = (
       <>
         {stepper}
@@ -503,10 +503,10 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             {!mine.length
               ? "Choose the sessions you'd like to attend."
               : mine.every((r) => r.status === "waitlist")
-                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. Choose another time, add more sessions, or keep your waitlist place."
-                : mine.some((r) => r.status === "waitlist")
-                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Add more sessions, choose another time for a waitlisted one, or cancel what you no longer need."
-                  : "You're already registered for the sessions below. Add more sessions or cancel the ones you no longer need."}
+                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. You can change a time, add or remove sessions, or keep your waitlist place."
+                : anyWait
+                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Use “Change time” or “Change my sessions” to adjust — nothing changes until you confirm."
+                  : "You're registered for the sessions below. Use “Change time” or “Change my sessions” to adjust, or cancel what you no longer need."}
           </p>
           {errorBox}
           {anyWait && (
@@ -525,16 +525,13 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                       {label(r.topic)} <StatusBadge status={r.status} position={r.waitlistPosition} />
                     </span>
                     <span className="b-time">{r.timeSlot}</span>
-                    {r.status === "waitlist" && (
+                    {hasOtherTimes(r.topic) && (
                       <button
                         className="btn-small"
-                        aria-label={`Choose another time for ${label(r.topic)}`}
-                        onClick={() => {
-                          setCancelErr("");
-                          setSwapTarget(r);
-                        }}
+                        aria-label={`Change time for ${label(r.topic)}`}
+                        onClick={() => void startChange(r.topic)}
                       >
-                        Choose another time
+                        Change time
                       </button>
                     )}
                     <button
@@ -553,25 +550,23 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             </>
           ) : (
             <div className="empty" style={{ border: "1px dashed var(--line)", borderRadius: 8, maxWidth: 600 }}>
-              <div className="icon" aria-hidden>▦</div>
+              <div className="icon" aria-hidden>
+                ▦
+              </div>
               You have no bookings at the moment.
-            </div>
-          )}
-          {allDone && (
-            <div style={{ marginTop: 16 }}>
-              <NoteBox>
-                You&apos;re booked for every topic, so there&apos;s nothing left to add. To switch a time slot, cancel that booking first and
-                then add it again.
-              </NoteBox>
             </div>
           )}
           <div className="btn-row">
             <button className="btn-secondary" onClick={() => goStep(1)}>
               Back
             </button>
-            {!allDone && (
+            {mine.length ? (
+              <button className="btn-primary" onClick={() => void startChange()}>
+                Change my sessions
+              </button>
+            ) : (
               <button className="btn-primary" onClick={() => goStep(2)}>
-                {mine.length ? "Add more sessions" : "Choose sessions"}
+                Choose sessions
               </button>
             )}
           </div>
@@ -586,64 +581,64 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         const s = { ...selSlots };
         delete s[t];
         setSelSlots(s);
-      } else setSelTopics([...selTopics, t]);
+      } else {
+        setSelTopics([...selTopics, t]);
+        const cur = bookedByTopic[t];
+        if (cur) setSelSlots({ ...selSlots, [t]: cur.sessionId }); // re-selecting restores the current booking
+        else if (t === G && gSid && sess[gSid]?.state !== "full") setSelSlots({ ...selSlots, [t]: gSid }); // single session
+      }
     };
-    const bookedTag = (r: MyBooking) => (
-      <span className={`booked-tag${r.status === "waitlist" ? " wl" : ""}`}>
-        ✓ Booked · {r.timeSlot}
-        {r.status === "waitlist" ? " (waitlist)" : ""}
-      </span>
-    );
-    const stxSel = selTopics.includes(P);
+    const currentTag = (t: string) => {
+      const r = bookedByTopic[t];
+      if (!r) return null;
+      return (
+        <span className={`booked-tag${r.status === "waitlist" ? " wl" : ""}`}>
+          {selTopics.includes(t) ? "✓ Currently booked" : "Will be cancelled"} · {r.timeSlot}
+          {r.status === "waitlist" ? ` (waitlist #${r.waitlistPosition ?? "?"})` : ""}
+        </span>
+      );
+    };
+    const removing = mine.filter((r) => !selTopics.includes(r.topic));
     const plenaryTimes = config.plenary.sessions.map((s) => s.time.split("-")[0]).join(" & ");
+    const gFull = !!(gSid && sess[gSid]?.state === "full");
     body = (
       <>
         {stepper}
         {idBar}
         <div className="panel">
-          {heading(returning ? "Add more sessions" : "Which sessions interest you?")}
+          {heading(returning ? "Change your sessions" : "Which sessions interest you?")}
           <p className="lede">
             {returning
-              ? "Topics you've already booked are marked. Select any additional sessions — the system blocks time clashes with your existing bookings."
+              ? "Your current sessions are selected. Select more, or deselect any you no longer want — nothing changes until you confirm."
               : `Select one or more. You can attend the ${config.plenary.title} plenary, multiple product workshops${G ? " and the evening gathering" : ""} — the system blocks time clashes automatically.`}
           </p>
           {errorBox}
+          {removing.length > 0 && (
+            <NoteBox kind="wait">
+              <strong>Deselected — will be cancelled when you confirm:</strong>{" "}
+              {removing.map((r) => `${label(r.topic)} (${r.timeSlot})`).join(", ")}
+            </NoteBox>
+          )}
           <div style={{ marginBottom: 8 }}>
-            {bookedByTopic[P] ? (
-              <div className="ws-card stx booked">
-                <h3>{config.plenary.title}</h3>
-                <p>{config.plenary.description}</p>
-                {bookedTag(bookedByTopic[P])}
-              </div>
-            ) : (
-              <button
-                className={`ws-card stx ${stxSel ? "selected" : ""}`}
-                aria-pressed={stxSel}
-                aria-label={config.plenary.title}
-                aria-describedby="d-plenary"
-                onClick={() => toggle(P)}
-              >
-                <span className={`check ${stxSel ? "on" : ""}`} aria-hidden>
-                  ✓
-                </span>
-                <h3>{config.plenary.title}</h3>
-                <p id="d-plenary">
-                  {config.plenary.description} Two identical sessions available ({plenaryTimes}).
-                </p>
-                <span className="meta">{config.plenary.confirmedCap} seats per session</span>
-              </button>
-            )}
+            <button
+              className={`ws-card stx ${selTopics.includes(P) ? "selected" : ""}`}
+              aria-pressed={selTopics.includes(P)}
+              aria-label={config.plenary.title}
+              aria-describedby="d-plenary"
+              onClick={() => toggle(P)}
+            >
+              <span className={`check ${selTopics.includes(P) ? "on" : ""}`} aria-hidden>
+                ✓
+              </span>
+              <h3>{config.plenary.title}</h3>
+              <p id="d-plenary">
+                {config.plenary.description} Two identical sessions available ({plenaryTimes}).
+              </p>
+              {currentTag(P) ?? <span className="meta">{config.plenary.confirmedCap} seats per session</span>}
+            </button>
           </div>
           <div className="card-grid">
             {config.workshops.topics.map((w) => {
-              if (bookedByTopic[w.key])
-                return (
-                  <div className="ws-card booked" key={w.key}>
-                    <h3>{label(w.key)}</h3>
-                    <p>{w.desc}</p>
-                    {bookedTag(bookedByTopic[w.key])}
-                  </div>
-                );
               const sel = selTopics.includes(w.key);
               const total = config.workshops.times.filter((t) => sess[sessionId(w.key, t)]).length;
               const avail = config.workshops.times.filter((t) => {
@@ -664,20 +659,16 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                   </span>
                   <h3>{label(w.key)}</h3>
                   <p id={`d-${sessionId(w.key, "")}`}>{w.desc}</p>
-                  <span className="meta">{availability ? `${avail} of ${total} sessions with seats` : "Loading availability…"}</span>
+                  {currentTag(w.key) ?? (
+                    <span className="meta">{availability ? `${avail} of ${total} sessions with seats` : "Loading availability…"}</span>
+                  )}
                 </button>
               );
             })}
           </div>
           {G && gSid && (
             <div style={{ marginTop: 12 }}>
-              {bookedByTopic[G] ? (
-                <div className="ws-card social booked">
-                  <h3>{config.evening.title}</h3>
-                  <p>{config.evening.registration?.cardDescription}</p>
-                  {bookedTag(bookedByTopic[G])}
-                </div>
-              ) : sess[gSid]?.state === "full" && !selTopics.includes(G) ? (
+              {gFull && !selTopics.includes(G) && !bookedByTopic[G] ? (
                 <div className="ws-card social booked">
                   <h3>{config.evening.title}</h3>
                   <p>{config.evening.registration?.cardDescription}</p>
@@ -689,12 +680,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                   aria-pressed={selTopics.includes(G)}
                   aria-label={config.evening.title}
                   aria-describedby="d-evening"
-                  onClick={() => {
-                    if (selTopics.includes(G)) return toggle(G);
-                    setSelTopics([...selTopics, G]);
-                    // Only one session, so pre-select it.
-                    if (sess[gSid]?.state !== "full") setSelSlots({ ...selSlots, [G]: gSid });
-                  }}
+                  onClick={() => toggle(G)}
                 >
                   <span className="check" aria-hidden>
                     {selTopics.includes(G) ? "✓" : ""}
@@ -703,9 +689,11 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                   <p id="d-evening">
                     {config.evening.registration?.cardDescription} {config.evening.time.replace("-", "–")}.
                   </p>
-                  <span className="meta">
-                    {sess[gSid] ? `${sess[gSid].seatsLeft} of ${sess[gSid].confirmedCap} places left` : "Loading availability…"}
-                  </span>
+                  {currentTag(G) ?? (
+                    <span className="meta">
+                      {sess[gSid] ? `${sess[gSid].seatsLeft} of ${sess[gSid].confirmedCap} places left` : "Loading availability…"}
+                    </span>
+                  )}
                 </button>
               )}
             </div>
@@ -744,8 +732,12 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         {stepper}
         {idBar}
         <div className="panel">
-          {heading("Choose your time slots")}
-          <p className="lede">Only your selected topics are shown. Times you&apos;re already booked for are blocked to prevent clashes.</p>
+          {heading(mine.length ? "Change your time slots" : "Choose your time slots")}
+          <p className="lede">
+            {mine.length
+              ? "Your current times are selected and marked. Pick another time to change it — nothing changes until you confirm."
+              : "Only your selected topics are shown. Times that clash with another of your choices are blocked."}
+          </p>
           {errorBox}
           {!submitError && filledNotes.length > 0 && (
             <ErrorBox>
@@ -763,7 +755,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             if (t === G && gSid) {
               const s = sess[gSid];
               const sel = chosen === gSid;
-              const dis = !s || (s.state === "full" && !sel);
+              const dis = !s || (s.state === "full" && !sel && !currentIn(gSid));
               return (
                 <div className="slot-group" key={t} role="group" aria-labelledby={`g-${t}`}>
                   <h3 id={`g-${t}`}>{config.evening.title}</h3>
@@ -775,10 +767,11 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                       aria-pressed={sel}
                       onClick={() => pick(t, gSid)}
                     >
-                      {config.evening.time} <SeatPill s={s} justFilled={justFilled.includes(gSid)} />
+                      {config.evening.time}{" "}
+                      {currentIn(gSid) ? currentPill(currentIn(gSid)!) : <SeatPill s={s} justFilled={justFilled.includes(gSid)} />}
                     </button>
                   </div>
-                  {s?.state === "full" && !sel && (
+                  {s?.state === "full" && !sel && !currentIn(gSid) && (
                     <div className="sub" style={{ color: "var(--red)", marginTop: 8 }}>
                       The gathering is fully booked.{" "}
                       <button className="link-btn" onClick={() => dropTopic(t)}>
@@ -798,19 +791,19 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                     {config.plenary.sessions.map((ps) => {
                       const sid = sessionId(P, ps.time);
                       const s = sess[sid];
-                      const own = mine.find((r) => r.timeSlot === ps.time);
+                      const cur = currentIn(sid);
                       const sel = chosen === sid;
-                      const dis = !s || (s.state === "full" && !sel) || !!own;
+                      const dis = !s || (s.state === "full" && !sel && !cur);
                       return (
                         <button
                           key={sid}
-                          className={`slot-btn ${sel ? "selected" : ""}${s?.state === "waitlist" && !dis ? " waitlist" : ""}${justFilled.includes(sid) ? " just-filled" : ""}`}
+                          className={`slot-btn ${sel ? "selected" : ""}${s?.state === "waitlist" && !dis && !cur ? " waitlist" : ""}${justFilled.includes(sid) ? " just-filled" : ""}`}
                           disabled={dis}
                           aria-pressed={sel}
                           onClick={() => pick(t, sid)}
                         >
                           {ps.time}{" "}
-                          {own ? <span className="seat-pill full">booked: {label(own.topic)}</span> : <SeatPill s={s} justFilled={justFilled.includes(sid)} />}
+                          {cur ? currentPill(cur) : <SeatPill s={s} justFilled={justFilled.includes(sid)} />}
                         </button>
                       );
                     })}
@@ -826,22 +819,22 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
               const sid = sessionId(t, time);
               const s = sess[sid];
               if (!s) return null;
-              const own = mine.find((r) => r.timeSlot === time);
+              const cur = currentIn(sid);
               const clash = otherSel.includes(time);
-              const dis = s.state === "full" || clash || !!own;
+              const dis = (s.state === "full" && !cur) || clash;
               if (!dis) usable++;
               const sel = chosen === sid;
-              const tag = own ? (
-                <span className="seat-pill full">booked: {label(own.topic)}</span>
-              ) : clash ? (
+              const tag = clash ? (
                 <span className="seat-pill full">clash</span>
+              ) : cur ? (
+                currentPill(cur)
               ) : (
                 <SeatPill s={s} justFilled={justFilled.includes(sid)} />
               );
               return (
                 <button
                   key={sid}
-                  className={`slot-btn ${sel ? "selected" : ""}${s.state === "waitlist" && !dis ? " waitlist" : ""}${justFilled.includes(sid) ? " just-filled" : ""}`}
+                  className={`slot-btn ${sel ? "selected" : ""}${s.state === "waitlist" && !dis && !cur ? " waitlist" : ""}${justFilled.includes(sid) ? " just-filled" : ""}`}
                   disabled={dis}
                   aria-pressed={sel}
                   onClick={() => pick(t, sid)}
@@ -872,32 +865,52 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
               Back
             </button>
             <button className="btn-primary" disabled={!allChosen} onClick={() => goStep(4)}>
-              Review registration
+              {mine.length ? "Review changes" : "Review registration"}
             </button>
           </div>
         </div>
       </>
     );
   } else if (step === 4) {
-    const items = selTopics
-      .map((t) => ({ t, s: sess[selSlots[t]] }))
+    const chosen = selTopics
+      .map((t) => ({ t, s: sess[selSlots[t]], cur: bookedByTopic[t] }))
       .filter((x) => x.s)
       .sort((a, b) => a.s.timeSlot.localeCompare(b.s.timeSlot));
-    const anyWait = items.some((x) => x.s.state !== "open");
+    const kept = chosen.filter((x) => x.cur && x.cur.sessionId === x.s.id);
+    const changed = chosen.filter((x) => x.cur && x.cur.sessionId !== x.s.id);
+    const added = chosen.filter((x) => !x.cur);
+    const removing = mine.filter((r) => !selTopics.includes(r.topic));
+    const waitNew = [...changed, ...added].filter((x) => x.s.state !== "open");
+    const giveUpSeat = changed.filter((x) => x.cur!.status === "confirmed" && x.s.state !== "open");
+    const noChanges = mine.length > 0 && !changed.length && !added.length && !removing.length;
+    const waitBadge = <span className="status-badge wait">Waitlist</span>;
     body = (
       <>
         {stepper}
         {idBar}
         <div className="panel">
-          {heading("Confirm your registration")}
-          <p className="lede">Please review. Seats are reserved only after you confirm.</p>
+          {heading(mine.length ? "Confirm your changes" : "Confirm your registration")}
+          <p className="lede">
+            {mine.length
+              ? "Please review. Nothing changes until you confirm — then everything below is updated in one go."
+              : "Please review. Seats are reserved only after you confirm."}
+          </p>
           {errorBox}
-          {anyWait && (
+          {giveUpSeat.length > 0 && (
+            <ErrorBox>
+              <strong>You&apos;d give up a confirmed seat:</strong>{" "}
+              {giveUpSeat.map((x) => `${label(x.t)} ${x.cur!.timeSlot} → ${x.s.timeSlot} is full, so you'd only be on the waitlist there`).join("; ")}.
+              Go back to keep your current time.
+            </ErrorBox>
+          )}
+          {waitNew.length > 0 && (
             <NoteBox kind="wait">
-              One or more of your sessions is full, so you&apos;ll join its <strong>waitlist</strong>. You&apos;ll keep your spot in line and
-              move up automatically if a seat frees up — the organising team will confirm by email.
+              {waitNew.length === 1 ? "One of your new choices is" : "Some of your new choices are"} full, so you&apos;ll join the{" "}
+              <strong>waitlist</strong> there — no seat until someone cancels. You&apos;ll move up automatically and the organising team will
+              confirm by email.
             </NoteBox>
           )}
+          {noChanges && <NoteBox>You haven&apos;t changed anything yet. Go back to pick a different time or add or remove sessions.</NoteBox>}
           <div className="summary-box">
             <div className="row">
               <span className="k">Name</span>
@@ -908,29 +921,69 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
               <span className="v">{email}</span>
             </div>
             <div className="summary-ws">
-              <div className="k">{mine.length ? "Adding now" : "Selected sessions"}</div>
-              {items.map(({ t, s }) => (
-                <div className="item" key={t}>
-                  <span>
-                    {label(t)} {s.state !== "open" && <span className="status-badge wait">Waitlist</span>}
-                  </span>
-                  <span>{s.timeSlot}</span>
-                </div>
-              ))}
-              {mine.length > 0 && (
+              {!mine.length ? (
                 <>
-                  <div className="k" style={{ marginTop: 8 }}>
-                    Already booked
-                  </div>
-                  {mine.map((r) => (
-                    <div className="item existing" key={r.id}>
+                  <div className="k">Selected sessions</div>
+                  {added.map(({ t, s }) => (
+                    <div className="item" key={t}>
                       <span>
-                        {label(r.topic)}{" "}
-                        <span className={`status-badge ${r.status === "waitlist" ? "wait" : "conf"}`} style={{ opacity: 0.75 }}>
-                          Already booked
-                        </span>
+                        {label(t)} {s.state !== "open" && waitBadge}
                       </span>
-                      <span>{r.timeSlot}</span>
+                      <span>{s.timeSlot}</span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {changed.length > 0 && <div className="k">Changing time</div>}
+                  {changed.map(({ t, s, cur }) => (
+                    <div className="item" key={t}>
+                      <span>
+                        {label(t)} {s.state !== "open" && waitBadge}
+                      </span>
+                      <span>
+                        <span className="muted" style={{ textDecoration: "line-through" }}>
+                          {cur!.timeSlot}
+                        </span>{" "}
+                        → {s.timeSlot}
+                      </span>
+                    </div>
+                  ))}
+                  {added.length > 0 && (
+                    <div className="k" style={{ marginTop: changed.length ? 8 : 0 }}>
+                      Adding
+                    </div>
+                  )}
+                  {added.map(({ t, s }) => (
+                    <div className="item" key={t}>
+                      <span>
+                        {label(t)} {s.state !== "open" && waitBadge}
+                      </span>
+                      <span>{s.timeSlot}</span>
+                    </div>
+                  ))}
+                  {removing.length > 0 && (
+                    <div className="k" style={{ marginTop: 8 }}>
+                      Cancelling
+                    </div>
+                  )}
+                  {removing.map((r) => (
+                    <div className="item existing" key={r.id}>
+                      <span style={{ textDecoration: "line-through" }}>{label(r.topic)}</span>
+                      <span style={{ textDecoration: "line-through" }}>{r.timeSlot}</span>
+                    </div>
+                  ))}
+                  {kept.length > 0 && (
+                    <div className="k" style={{ marginTop: 8 }}>
+                      Keeping as is
+                    </div>
+                  )}
+                  {kept.map(({ t, cur }) => (
+                    <div className="item existing" key={t}>
+                      <span>
+                        {label(t)} <StatusBadge status={cur!.status} position={cur!.waitlistPosition} />
+                      </span>
+                      <span>{cur!.timeSlot}</span>
                     </div>
                   ))}
                 </>
@@ -941,8 +994,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             <button className="btn-secondary" onClick={() => goStep(3)} disabled={busy}>
               Back
             </button>
-            <button className="btn-primary" onClick={submit} disabled={busy || items.length !== selTopics.length}>
-              {busy ? "Saving…" : "Confirm registration"}
+            <button className="btn-primary" onClick={submit} disabled={busy || noChanges || chosen.length !== selTopics.length}>
+              {busy ? "Saving…" : mine.length ? "Confirm changes" : "Confirm registration"}
             </button>
           </div>
         </div>
@@ -953,6 +1006,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     const newWait = newOnes.filter((r) => r.status === "waitlist");
     const newConfirmed = newOnes.length - newWait.length;
     const reminder = !G || bookedByTopic[G] ? config.evening.successReminder : config.evening.successReminderNotBooked;
+    const movedFrom = removedLast.filter((r) => newOnes.some((n) => n.topic === r.topic));
+    const cancelledOnly = removedLast.filter((r) => !newOnes.some((n) => n.topic === r.topic));
     body = (
       <div className="success">
         {newWait.length ? (
@@ -990,7 +1045,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             <div className="tick" aria-hidden>
               ✓
             </div>
-            {heading(`You're registered, ${firstName(name)}`)}
+            {heading(newOnes.length ? `You're registered, ${firstName(name)}` : `Your changes are saved, ${firstName(name)}`)}
           </>
         )}
         {newConfirmed > 0 && (
@@ -1001,6 +1056,17 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
         <p className="email-line">
           Registered with <strong>{email}</strong>
         </p>
+        {movedFrom.length > 0 && (
+          <p className="email-line">
+            Changed:{" "}
+            {movedFrom
+              .map((r) => `${label(r.topic)} ${r.timeSlot} → ${newOnes.find((n) => n.topic === r.topic)?.timeSlot ?? ""}`)
+              .join(", ")}
+          </p>
+        )}
+        {cancelledOnly.length > 0 && (
+          <p className="email-line">Cancelled: {cancelledOnly.map((r) => `${label(r.topic)} (${r.timeSlot})`).join(", ")}</p>
+        )}
         <div className="list-label" style={{ textAlign: "left", marginTop: 14 }}>
           All your bookings
         </div>
@@ -1016,9 +1082,15 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
           ))}
         </div>
         <div className="btn-row" style={{ justifyContent: "center" }}>
-          <button className="btn-primary" onClick={() => goStep(1.5)}>
-            {newWait.length ? "Adjust my sessions" : "Manage my bookings"}
-          </button>
+          {newWait.length ? (
+            <button className="btn-primary" onClick={() => void startChange(newWait[0].topic)}>
+              Adjust my sessions
+            </button>
+          ) : (
+            <button className="btn-primary" onClick={() => goStep(1.5)}>
+              Manage my bookings
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1056,36 +1128,6 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             <button className="btn-danger" onClick={doCancel} disabled={busy}>
               Cancel booking
             </button>
-          </div>
-        </Modal>
-      )}
-      {swapTarget && (
-        <Modal onClose={() => setSwapTarget(null)} label="Choose another time?">
-          <h2>Choose another time?</h2>
-          {alternativesFor(swapTarget).length ? (
-            <p>
-              You&apos;ll leave the waitlist for {label(swapTarget.topic)} at {swapTarget.timeSlot} (you&apos;re #{swapTarget.waitlistPosition ?? "?"}).
-              Right now {alternativesFor(swapTarget).length} other time{alternativesFor(swapTarget).length === 1 ? "" : "s"} can still be booked —
-              you&apos;ll pick one on the next screen.
-            </p>
-          ) : (
-            <p>
-              No other time for {label(swapTarget.topic)} can be booked right now (full or clashing with your other sessions). Keep your waitlist
-              place — you&apos;ll move up automatically if someone cancels.
-            </p>
-          )}
-          <div className="err" role="alert">
-            {cancelErr}
-          </div>
-          <div className="btn-row">
-            <button className="btn-secondary" onClick={() => setSwapTarget(null)}>
-              Keep my waitlist place
-            </button>
-            {alternativesFor(swapTarget).length > 0 && (
-              <button className="btn-primary" onClick={doSwap} disabled={busy}>
-                Leave waitlist and choose
-              </button>
-            )}
           </div>
         </Modal>
       )}

@@ -237,3 +237,64 @@ test("gathering: no waitlist, closes when full, can be combined with the 17:00 w
   assert.equal((await call(`select cancel_booking(p_email => $1, p_booking_id => $2::uuid) as result`, ["eve2@bshg.com", id])).ok, true);
   assert.equal((await book("Evening Three", "eve3@bshg.com", ["gathering_17302000"])).ok, true);
 });
+
+const update = (name: string, email: string, ids: string[], basedOn: string[] | null) =>
+  call(`select update_registration(p_name => $1, p_email => $2, p_session_ids => $3::text[], p_based_on => $4::uuid[]) as result`, [
+    name,
+    email,
+    ids,
+    basedOn,
+  ]);
+const bookingIds = async (email: string) => (await mine(email)).bookings.map((b: any) => b.id);
+
+test("update_registration: keep, change, add and remove atomically; kept waitlist place is preserved", async () => {
+  // fill surfacevent_14301500 so the next person is waitlisted
+  await fill("surfacevent_14301500", 15, "chg");
+  const e = "changer@bshg.com";
+  assert.equal((await book("Change Person", e, ["surfacevent_14301500", "dishcare_13001330", "stx_09301030"])).ok, true);
+  let m = await mine(e);
+  const wl = m.bookings.find((b: any) => b.sessionId === "surfacevent_14301500");
+  assert.deepEqual([wl.status, wl.waitlistPosition], ["waitlist", 1]);
+
+  // keep the waitlisted Surface/Vent, move Dish Care to 15:30, drop Strategy Update, add Ovens 16:15
+  const r = await update("Change Person", e, ["surfacevent_14301500", "dishcare_15301600", "ovens_16151645"], await bookingIds(e));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(
+    r.outcomes.map((o: any) => [o.sessionId, o.result, o.kept]),
+    [
+      ["dishcare_15301600", "confirmed", false],
+      ["ovens_16151645", "confirmed", false],
+      ["surfacevent_14301500", "waitlist", true],
+    ],
+  );
+  assert.deepEqual(r.removed.map((x: any) => x.topic).sort(), ["Dish Care", "STX"]);
+  m = await mine(e);
+  const still = m.bookings.find((b: any) => b.sessionId === "surfacevent_14301500");
+  assert.equal(still.id, wl.id, "same booking row — queue place kept");
+  assert.equal(still.waitlistPosition, 1);
+});
+
+test("update_registration: stale screen or a full session changes nothing", async () => {
+  const e = "changer@bshg.com";
+  const before = await bookingIds(e);
+  const stale = await update("Change Person", e, ["dishcare_15301600"], [before[0]]);
+  assert.equal(stale.error, "stale");
+  assert.deepEqual((await bookingIds(e)).sort(), [...before].sort());
+
+  await fill("cooling_16151645", 25, "fullc"); // 15 + 10 = full
+  const r = await update("Change Person", e, ["dishcare_15301600", "cooling_16151645", "surfacevent_14301500"], before);
+  assert.equal(r.ok, false);
+  assert.equal(r.outcomes.find((o: any) => o.sessionId === "cooling_16151645").reason, "full");
+  assert.deepEqual((await bookingIds(e)).sort(), [...before].sort(), "nothing removed on rejection");
+
+  const clash = await update("Change Person", e, ["dishcare_15301600", "cooling_15301600"], before);
+  assert.equal(clash.ok, false);
+});
+
+test("update_registration: freeing a confirmed seat by changing time promotes the waitlist", async () => {
+  const e = "chg0@bshg.com"; // confirmed in surfacevent_14301500 (from the fill above)
+  const r = await update("Person chg0", e, ["surfacevent_13451415"], await bookingIds(e));
+  assert.equal(r.ok, true);
+  const promoted = (await mine("changer@bshg.com")).bookings.find((b: any) => b.sessionId === "surfacevent_14301500");
+  assert.equal(promoted.status, "confirmed");
+});

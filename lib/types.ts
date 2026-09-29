@@ -49,10 +49,12 @@ export type BookOutcome = {
   reason?: string | null;
   id?: string;
   waitlistPosition?: number | null;
+  /** update_registration: true when this booking already existed and was left untouched. */
+  kept?: boolean;
 };
 
 export type BookResponse =
-  | { ok: true; outcomes: BookOutcome[] }
+  | { ok: true; outcomes: BookOutcome[]; removed?: { id: string; topic: string; timeSlot: string; status: string }[] }
   | { ok: false; error: string; message?: string; outcomes?: BookOutcome[] };
 
 export type Promoted = { id: string; name: string; email: string; sessionId: string };
