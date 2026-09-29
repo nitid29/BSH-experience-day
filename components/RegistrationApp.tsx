@@ -341,8 +341,6 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
     if (focusTopic) setTimeout(() => document.getElementById(`g-${focusTopic}`)?.scrollIntoView({ block: "center" }), 150);
   };
 
-  const hasOtherTimes = (topic: string) => Object.values(sess).filter((s) => s.topic === topic).length > 1;
-
   /* ---------- admin entry ---------- */
 
   const openAdmin = async () => {
@@ -503,10 +501,10 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             {!mine.length
               ? "Choose the sessions you'd like to attend."
               : mine.every((r) => r.status === "waitlist")
-                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. You can change a time, add or remove sessions, or keep your waitlist place."
+                ? "You don't have a seat yet — you're only on the waitlist for the sessions below. Use “Change my sessions” to pick another time or add or remove sessions, or keep your waitlist place."
                 : anyWait
-                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Use “Change time” or “Change my sessions” to adjust — nothing changes until you confirm."
-                  : "You're registered for the sessions below. Use “Change time” or “Change my sessions” to adjust, or cancel what you no longer need."}
+                  ? "Confirmed sessions have a seat; waitlisted ones don't yet. Use “Change my sessions” to adjust — nothing changes until you confirm."
+                  : "You're registered for the sessions below. Use “Change my sessions” to adjust, or cancel what you no longer need."}
           </p>
           {errorBox}
           {anyWait && (
@@ -525,15 +523,6 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                       {label(r.topic)} <StatusBadge status={r.status} position={r.waitlistPosition} />
                     </span>
                     <span className="b-time">{r.timeSlot}</span>
-                    {hasOtherTimes(r.topic) && (
-                      <button
-                        className="btn-small"
-                        aria-label={`Change time for ${label(r.topic)}`}
-                        onClick={() => void startChange(r.topic)}
-                      >
-                        Change time
-                      </button>
-                    )}
                     <button
                       className="btn-small danger"
                       aria-label={`Cancel ${label(r.topic)} at ${r.timeSlot}`}
