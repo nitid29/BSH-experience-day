@@ -60,7 +60,7 @@ npm run lint
    | `ADMIN_SESSION_SECRET` | a long random string (`openssl rand -base64 32`) |
 
 5. **Redeploy.** On the first page load, the default event configuration is written to the database.
-6. **Replace the logos.** Put the official files at `public/brand/reu-wave.svg` and `public/brand/bsh.svg`. The files there now are simple placeholders. PNGs also work if you change the paths in Admin → Event settings → Advanced.
+6. **Logos.** The REU logo is `public/brand/reu-wave.png`. `public/brand/bsh.svg` is still a simple placeholder: replace it with the official BSH wordmark. If a file name or type changes, update the path in Admin → Event settings → Advanced (`branding.primaryLogo` / `branding.secondaryLogo`).
 7. **Run the load test** against the deployment, then delete the test rows:
    ```bash
    node scripts/load-test.mjs https://<your-app>.vercel.app 200 ovens_17001730
