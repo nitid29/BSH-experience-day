@@ -314,7 +314,7 @@ export default function AdminApp({ initialConfig, realtime }: { initialConfig: E
               return (
                 <tr key={s.id}>
                   <td>
-                    {s.kind === "workshop" ? s.topic : s.label || s.topic} · {s.timeSlot}
+                    {s.kind === "workshop" ? label(s.topic) : s.label || label(s.topic)} · {s.timeSlot}
                   </td>
                   <td>
                     {s.confirmedCount} / {s.confirmedCap}
@@ -776,7 +776,7 @@ function SettingsPanel({
               <label htmlFor="ev-domains">Allowed email domains</label>
               <input
                 id="ev-domains"
-                placeholder="empty = any domain, e.g. bshg.com"
+                placeholder="empty = any domain, for example bshg.com"
                 value={draft.registration.allowedEmailDomains.join(", ")}
                 onChange={(e) =>
                   setDraft({
@@ -798,7 +798,7 @@ function SettingsPanel({
           </div>
           <div className="admin-tools" style={{ gap: 18 }}>
             <label>
-              {draft.plenary.topic} confirmed{" "}
+              {draft.plenary.title} confirmed{" "}
               <input
                 className="cap-input"
                 type="number"
@@ -808,7 +808,7 @@ function SettingsPanel({
               />
             </label>
             <label>
-              {draft.plenary.topic} waitlist{" "}
+              {draft.plenary.title} waitlist{" "}
               <input
                 className="cap-input"
                 type="number"
@@ -897,7 +897,7 @@ function SettingsPanel({
                 {defs.map((d) => (
                   <tr key={d.id}>
                     <td>
-                      {d.label || d.topic} · {d.timeSlot}
+                      {d.label || topicLabel(draft, d.topic)} · {d.timeSlot}
                     </td>
                     <td className="muted">
                       {counts[d.id] ? `${counts[d.id].confirmedCount} confirmed · ${counts[d.id].waitlistCount} waitlist` : "—"}
@@ -907,7 +907,7 @@ function SettingsPanel({
                         className="cap-input"
                         type="number"
                         min={0}
-                        aria-label={`Confirmed capacity for ${d.topic} ${d.timeSlot}`}
+                        aria-label={`Confirmed capacity for ${topicLabel(draft, d.topic)} ${d.timeSlot}`}
                         value={n(d.confirmedCap)}
                         onChange={(e) => setCap(d.id, "confirmedCap", e.target.value)}
                       />
@@ -918,7 +918,7 @@ function SettingsPanel({
                         className="cap-input"
                         type="number"
                         min={0}
-                        aria-label={`Waitlist capacity for ${d.topic} ${d.timeSlot}`}
+                        aria-label={`Waitlist capacity for ${topicLabel(draft, d.topic)} ${d.timeSlot}`}
                         value={n(d.waitlistCap)}
                         onChange={(e) => setCap(d.id, "waitlistCap", e.target.value)}
                       />

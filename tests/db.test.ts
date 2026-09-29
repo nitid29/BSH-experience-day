@@ -79,6 +79,8 @@ test("rules: one per topic, one per time, only one STX — across visits and wit
   r = await book("Rule Tester", e, ["ci_13001330"]); // same time row
   assert.equal(r.ok, false);
   assert.match(r.outcomes[0].reason, /already booked for Cooling at 13:00-13:30/);
+  r = await book("Rule Tester", e, ["stx_11001200"]);
+  assert.match(r.outcomes[0].reason, /the Strategy Update session at 09:30-10:30/, "full names, not short keys");
   r = await book("Rule Tester", e, ["cooling_14301500"]); // same topic again
   assert.match(r.outcomes[0].reason, /already booked for Cooling/);
   r = await book("Rule Tester", e, ["ovens_14301500", "dishcare_14301500"]); // clash inside one request

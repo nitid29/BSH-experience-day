@@ -84,8 +84,8 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
       const sameTopic = mine.find((r) => r.topic === s.topic);
       if (sameTopic)
         return s.kind === "plenary"
-          ? `already booked for the ${s.topic} session at ${sameTopic.timeSlot} (only one of the two is allowed)`
-          : `already booked for ${s.topic} at ${sameTopic.timeSlot}`;
+          ? `already booked for the ${label(s.topic)} session at ${sameTopic.timeSlot} (only one of the two is allowed)`
+          : `already booked for ${label(s.topic)} at ${sameTopic.timeSlot}`;
       const sameTime = mine.find((r) => r.timeSlot === s.timeSlot);
       if (sameTime) return `already booked for ${label(sameTime.topic)} at ${s.timeSlot}`;
       return null;
@@ -553,7 +553,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
           <p className="lede">
             {returning
               ? "Topics you've already booked are marked. Select any additional sessions — the system blocks time clashes with your existing bookings."
-              : `Select one or more. You can attend the ${config.plenary.topic} plenary, multiple product workshops${G ? " and the evening gathering" : ""} — the system blocks time clashes automatically.`}
+              : `Select one or more. You can attend the ${config.plenary.title} plenary, multiple product workshops${G ? " and the evening gathering" : ""} — the system blocks time clashes automatically.`}
           </p>
           {errorBox}
           <div style={{ marginBottom: 8 }}>
@@ -587,7 +587,7 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
               if (bookedByTopic[w.key])
                 return (
                   <div className="ws-card booked" key={w.key}>
-                    <h3>{w.key}</h3>
+                    <h3>{label(w.key)}</h3>
                     <p>{w.desc}</p>
                     {bookedTag(bookedByTopic[w.key])}
                   </div>
@@ -603,14 +603,14 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
                   key={w.key}
                   className={`ws-card ${sel ? "selected" : ""}`}
                   aria-pressed={sel}
-                  aria-label={w.key}
+                  aria-label={label(w.key)}
                   aria-describedby={`d-${sessionId(w.key, "")}`}
                   onClick={() => toggle(w.key)}
                 >
                   <span className="check" aria-hidden>
                     {sel ? "✓" : ""}
                   </span>
-                  <h3>{w.key}</h3>
+                  <h3>{label(w.key)}</h3>
                   <p id={`d-${sessionId(w.key, "")}`}>{w.desc}</p>
                   <span className="meta">{availability ? `${avail} of ${total} sessions with seats` : "Loading availability…"}</span>
                 </button>
@@ -800,12 +800,12 @@ export default function RegistrationApp({ config, realtime }: { config: EventCon
             });
             return (
               <div className="slot-group" key={t} role="group" aria-labelledby={`g-${t}`}>
-                <h3 id={`g-${t}`}>{t}</h3>
+                <h3 id={`g-${t}`}>{label(t)}</h3>
                 {usable === 0 && availability ? (
                   <div className="sub" style={{ color: "var(--red)" }}>
                     No time slot fits your schedule for this topic.{" "}
                     <button className="link-btn" onClick={() => dropTopic(t)}>
-                      Remove {t} from this registration
+                      Remove {label(t)} from this registration
                     </button>
                   </div>
                 ) : (

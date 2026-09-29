@@ -1,6 +1,7 @@
 import defaultConfigJson from "@/config/event.default.json";
 
-export type TopicDef = { key: string; desc: string };
+/** `key` is the stable internal id (used in session ids); `title` is the optional display name. */
+export type TopicDef = { key: string; desc: string; title?: string };
 
 export type EventConfig = {
   event: {
@@ -219,7 +220,7 @@ export function validateConfig(raw: unknown): string[] {
 export function topicLabel(cfg: EventConfig, topic: string): string {
   if (topic === cfg.plenary.topic) return cfg.plenary.title;
   if (topic === eveningTopic(cfg)) return cfg.evening.title;
-  return topic;
+  return cfg.workshops.topics.find((t) => t.key === topic)?.title || topic;
 }
 
 export function emailDomainAllowed(cfg: EventConfig, email: string): boolean {

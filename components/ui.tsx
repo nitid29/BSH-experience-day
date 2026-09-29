@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import type { EventConfig } from "@/lib/config";
+import { topicLabel, type EventConfig } from "@/lib/config";
 import type { SessionAvail } from "@/lib/types";
 
 /* eslint-disable @next/next/no-img-element */
@@ -218,7 +218,7 @@ export function Timetable({
                   const cls = isBooked ? "bk" : selectedTopics.includes(topic) ? "hl" : undefined;
                   return (
                     <td key={ci} className={cls}>
-                      {topic}
+                      {topicLabel(config, topic)}
                     </td>
                   );
                 })}

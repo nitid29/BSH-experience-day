@@ -5,7 +5,7 @@
     "date": "2026-10-27",
     "dateLabel": "27 October 2026",
     "shortDateLabel": "27 October",
-    "venue": "MCW",
+    "venue": "Munich head office",
     "dayStart": "09:30",
     "dayEnd": "20:00",
     "timezone": "Europe/Berlin"
@@ -25,7 +25,7 @@
   },
   "plenary": {
     "topic": "STX",
-    "title": "STX Strategy Update",
+    "title": "Strategy Update",
     "description": "VCP deployment, Brand Portfolio & Consumer Journey Steering, Channel Management.",
     "timetableNote": "VCP deployment, Brand Portfolio, Channel Management. Two identical sessions — register for one.",
     "confirmedCap": 50,
@@ -33,11 +33,11 @@
     "sessions": [
       {
         "time": "09:30-10:30",
-        "label": "STX Strategy Update · Session A"
+        "label": "Strategy Update · Session A"
       },
       {
         "time": "11:00-12:00",
-        "label": "STX Strategy Update · Session B"
+        "label": "Strategy Update · Session B"
       }
     ]
   },
@@ -67,7 +67,8 @@
       },
       {
         "key": "CI",
-        "desc": "Consumer Insights and use cases: latest research on buying behavior and category perception."
+        "desc": "Consumer Insights and use cases: latest research on buying behavior and category perception.",
+        "title": "Consumer Insights"
       }
     ],
     "times": [
@@ -145,8 +146,8 @@
   },
   "registration": {
     "allowedEmailDomains": [],
-    "emailPlaceholder": "e.g. max.mustermann@bshg.com",
-    "namePlaceholder": "e.g. Max Mustermann",
+    "emailPlaceholder": "for example max.mustermann@bshg.com",
+    "namePlaceholder": "for example Max Mustermann",
     "privacyNotice": "Your name and email are stored only to organise REU Experience Day and will be deleted after the event."
   },
   "capacityOverrides": {}
